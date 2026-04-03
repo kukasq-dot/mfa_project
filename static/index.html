@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MFA Система Безопасности</title>
+    <style>
+        /* Базовые стили */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
+            display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; color: #333;
+        }
+        .card { 
+            background: white; padding: 40px; border-radius: 16px; 
+            box-shadow: 0 15px 30px rgba(0,0,0,0.3); width: 350px; text-align: center; 
+            transition: all 0.3s ease; position: relative;
+        }
+        h2 { margin-top: 0; color: #2c3e50; font-weight: 700; }
+        
+        /* Вкладки (Tabs) для переключения Вход / Регистрация */
+        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eef2f5; }
+        .tab { 
+            flex: 1; padding: 10px; cursor: pointer; font-weight: bold; color: #7f8c8d; 
+            transition: all 0.3s; border-bottom: 3px solid transparent; 
+        }
+        .tab.active { color: #4a90e2; border-bottom-color: #4a90e2; }
+        .tab:hover:not(.active) { color: #34495e; }
+
+        /* Экраны */
+        #auth-view, #dashboard-view { display: none; }
+        #login-form, #register-form { display: none; }
+        #login-form.active, #register-form.active { display: block; animation: fadeIn 0.4s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Поля ввода */
+        .input-group { position: relative; width: 100%; margin: 10px 0; }
+        input { 
+            width: 100%; padding: 12px; border: 2px solid #eef2f5; 
+            border-radius: 8px; box-sizing: border-box; background-color: #f8fafc;
+            transition: border-color 0.3s, background-color 0.3s;
+        }
+        input:focus { border-color: #4a90e2; background-color: white; outline: none; }
+        
+        /* Глазок для пароля */
+        .eye-icon {
+            position: absolute; right: 15px; top: 12px; cursor: pointer; 
+            opacity: 0.5; transition: opacity 0.2s; user-select: none;
+        }
+        .eye-icon:hover { opacity: 1; }
+
+        /* Динамические правила пароля */
+        .password-rules {
+            text-align: left; font-size: 12px; background: #f8f9fa; 
+            padding: 10px; border-radius: 8px; margin-top: 5px; color: #7f8c8d;
+            display: none; /* Покажем только когда пользователь начнет вводить */
+        }
+        .password-rules p { margin: 3px 0; display: flex; align-items: center; }
+        .password-rules .valid { color: #2ecc71; }
+        .password-rules .invalid { color: #e74c3c; }
+        .rule-icon { margin-right: 5px; font-size: 14px; }
+
+        /* Кнопки */
+        button { 
+            width: 100%; padding: 12px; border: none; border-radius: 8px; 
+            color: white; cursor: pointer; margin-top: 15px; font-weight: bold; font-size: 15px;
+            transition: all 0.2s;
+        }
+        button:disabled { background-color: #bdc3c7 !important; cursor: not-allowed; transform: none !important; opacity: 1 !important;}
+        button:active:not(:disabled) { transform: scale(0.97); }
+        button:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+        
+        .btn-primary { background-color: #4a90e2; }
+        .btn-secondary { background-color: #2ecc71; }
+        .btn-warning { background-color: #f39c12; }
+        .btn-danger { background-color: #e74c3c; }
+        
+        /* Блоки уведомлений и MFA */
+        .msg-box { margin-top: 15px; font-size: 14px; font-weight: 600; min-height: 20px;}
+        #loginMfaBlock { display: none; margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #4a90e2; }
+        #mfaSetupBlock { display: none; margin-top: 25px; padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #eef2f5; }
+        #qrCodeImage { max-width: 180px; margin: 15px auto; border: 5px solid white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="card" id="auth-view">
+        <div class="tabs">
+            <div class="tab active" id="tab-login" onclick="switchTab('login')">Вход</div>
+            <div class="tab" id="tab-register" onclick="switchTab('register')">Регистрация</div>
+        </div>
+
+        <div id="login-form" class="active">
+            <div class="input-group">
+                <input type="text" id="login-username" placeholder="Логин" autocomplete="off">
+            </div>
+            <div class="input-group">
+                <input type="password" id="login-password" placeholder="Пароль">
+                <span class="eye-icon" onclick="togglePassword('login-password', this)">👁️</span>
+            </div>
+            
+            <button class="btn-primary" id="btn-login" onclick="login()">Войти в систему</button>
+
+            <div id="loginMfaBlock">
+                <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: bold; color: #2c3e50;">🔒 Двухэтапная проверка</p>
+                <input type="text" id="loginMfaCode" placeholder="Код из Google Auth" maxlength="6" style="text-align: center; letter-spacing: 2px; font-weight: bold;">
+                <button class="btn-primary" id="btn-login-mfa" onclick="loginWithMfa()">Подтвердить вход</button>
+            </div>
+        </div>
+
+        <div id="register-form">
+            <div class="input-group">
+                <input type="text" id="reg-username" placeholder="Придумайте логин" autocomplete="off">
+            </div>
+            <div class="input-group">
+                <input type="password" id="reg-password" placeholder="Придумайте пароль" oninput="validatePassword()">
+                <span class="eye-icon" onclick="togglePassword('reg-password', this)">👁️</span>
+            </div>
+            <div class="input-group">
+                <input type="password" id="reg-password-confirm" placeholder="Повторите пароль" oninput="validatePassword()">
+                <span class="eye-icon" onclick="togglePassword('reg-password-confirm', this)">👁️</span>
+            </div>
+
+            <div class="password-rules" id="password-rules">
+                <p id="rule-length" class="invalid"><span class="rule-icon">❌</span> Минимум 8 символов</p>
+                <p id="rule-letter" class="invalid"><span class="rule-icon">❌</span> Хотя бы одна буква</p>
+                <p id="rule-number" class="invalid"><span class="rule-icon">❌</span> Хотя бы одна цифра</p>
+                <p id="rule-space" class="valid"><span class="rule-icon">✅</span> Без пробелов</p> <p id="rule-match" class="invalid"><span class="rule-icon">❌</span> Пароли совпадают</p>
+            </div>
+
+            <button class="btn-secondary" id="btn-register" onclick="register()">Создать аккаунт</button>
+        </div>
+        
+        <div id="message-auth" class="msg-box"></div>
+    </div>
+
+    <div class="card" id="dashboard-view">
+        <h2>Панель управления</h2>
+        <p style="color: #7f8c8d; font-size: 14px; margin-bottom: 25px;">Защищенная зона</p>
+        
+        <button class="btn-primary" onclick="getSecretData()">Проверить доступ к API</button>
+        <button class="btn-warning" onclick="setupMFA()">⚙️ Настроить 2FA (QR-код)</button>
+        <button class="btn-danger" onclick="logout()" style="margin-top: 25px;">🚪 Выйти из аккаунта</button>
+
+        <div id="message-dash" class="msg-box"></div>
+
+        <div id="mfaSetupBlock">
+            <h3 style="margin-top: 0; color: #2c3e50; font-size: 16px;">Привязка устройства</h3>
+            <p style="font-size: 12px; color: #7f8c8d; line-height: 1.4;">Отсканируйте QR-код в приложении аутентификатора:</p>
+            <img id="qrCodeImage" src="" alt="QR Code" style="display:none;">
+            
+            <input type="text" id="mfaCode" placeholder="Введите 6 цифр" maxlength="6" style="text-align: center; letter-spacing: 2px; font-weight: bold;">
+            <button class="btn-warning" id="btn-verify-mfa" onclick="verifyMFA()">Подтвердить привязку</button>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
