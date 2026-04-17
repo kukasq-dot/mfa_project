@@ -11,3 +11,4 @@ class User(Base):
     # Поля для нашей будущей MFA (Многофакторной аутентификации)
     is_mfa_enabled = Column(Boolean, default=False)
     totp_secret = Column(String, nullable=True) # Здесь будем хранить секрет Google Authenticator
+    backup_codes = Column(String, nullable=True)

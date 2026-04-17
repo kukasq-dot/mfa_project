@@ -1,22 +1,27 @@
 // --- 1. УПРАВЛЕНИЕ UI И СОСТОЯНИЕМ ---
-
 window.onload = function() { checkAuthStatus(); };
 
-function checkAuthStatus() {
-    const token = localStorage.getItem("jwt_token");
-    if (token) {
-        document.getElementById("auth-view").style.display = "none";
-        document.getElementById("dashboard-view").style.display = "block";
-        resetAuthForms();
-    } else {
-        document.getElementById("auth-view").style.display = "block";
-        document.getElementById("dashboard-view").style.display = "none";
+async function checkAuthStatus() {
+    try {
+        const response = await fetch("/auth/status");
+        if (response.ok) {
+            document.getElementById("auth-view").style.display = "none";
+            document.getElementById("dashboard-view").style.display = "block";
+            resetAuthForms();
+        } else {
+            document.getElementById("auth-view").style.display = "block";
+            document.getElementById("dashboard-view").style.display = "none";
+        }
+    } catch(e) {
+        console.error("Ошибка проверки статуса");
     }
 }
 
 function switchTab(tabName) {
-    document.getElementById("message-auth").innerText = "";
-    document.getElementById("loginMfaBlock").style.display = "none";
+    // Скрываем все сообщения при переключении
+    document.getElementById("message-auth").classList.remove('active');
+    document.getElementById("message-reg").classList.remove('active');
+    document.getElementById("loginMfaBlock").classList.remove("active");
     
     // Меняем активную вкладку
     document.getElementById("tab-login").classList.remove("active");
@@ -26,7 +31,7 @@ function switchTab(tabName) {
     // Показываем нужную форму
     document.getElementById("login-form").classList.remove("active");
     document.getElementById("register-form").classList.remove("active");
-    document.getElementById(tabName + "-form").classList.add("active"); // <-- Ошибка была здесь
+    document.getElementById(tabName + "-form").classList.add("active");
 }
 
 function togglePassword(inputId, iconElement) {
@@ -47,18 +52,30 @@ function resetAuthForms() {
     document.getElementById("reg-username").value = "";
     document.getElementById("reg-password").value = "";
     document.getElementById("reg-password-confirm").value = "";
-    document.getElementById("password-rules").style.display = "none";
-    document.getElementById("loginMfaBlock").style.display = "none";
+    
+    // ИСЧЕЗНОВЕНИЕ ПОЧИНЕНО ЗДЕСЬ: используем классы вместо style.display
+    document.getElementById("password-rules").classList.remove("active");
+    document.getElementById("loginMfaBlock").classList.remove("active");
 }
 
-function showMsg(elementId, msg, color) {
+function showMsg(elementId, msg, type) {
     const el = document.getElementById(elementId);
-    el.style.color = color;
+    // Удаляем старые классы сообщений
+    el.classList.remove('success', 'error', 'info', 'active');
+    
+    // Добавляем красивый класс в зависимости от типа
+    if (type === 'green') el.classList.add('success');
+    else if (type === 'red') el.classList.add('error');
+    else el.classList.add('info'); 
+    
     el.innerText = msg;
-    setTimeout(() => { el.innerText = ""; }, 6000); 
+    el.classList.add('active'); // Активируем плавное появление
+    
+    setTimeout(() => { 
+        el.classList.remove('active'); 
+    }, 6000); 
 }
 
-// Управление состоянием загрузки кнопки
 function setButtonLoading(buttonId, isLoading, defaultText) {
     const btn = document.getElementById(buttonId);
     if (isLoading) {
@@ -71,15 +88,17 @@ function setButtonLoading(buttonId, isLoading, defaultText) {
 }
 
 // --- 2. ДИНАМИЧЕСКАЯ ВАЛИДАЦИЯ ПАРОЛЯ ---
-
 function updateRuleUI(ruleId, isValid) {
     const el = document.getElementById(ruleId);
+    const icon = el.querySelector('.check-icon');
+    
+    // Обновляем кружочки на красивые галочки
     if (isValid) {
-        el.className = "valid";
-        el.innerHTML = '<span class="rule-icon">✅</span>' + el.innerText.substring(2);
+        el.classList.add("valid");
+        icon.innerText = "✓";
     } else {
-        el.className = "invalid";
-        el.innerHTML = '<span class="rule-icon">❌</span>' + el.innerText.substring(2);
+        el.classList.remove("valid");
+        icon.innerText = "◯";
     }
 }
 
@@ -88,31 +107,29 @@ function validatePassword() {
     const confirmPwd = document.getElementById("reg-password-confirm").value;
     const rulesBox = document.getElementById("password-rules");
     
-    // Показываем блок с правилами, если начали вводить пароль
-    if (pwd.length > 0) rulesBox.style.display = "block";
-    else rulesBox.style.display = "none";
+    // Показываем блок с правилами при вводе (через CSS-класс!)
+    if (pwd.length > 0) rulesBox.classList.add("active");
+    else rulesBox.classList.remove("active");
 
     // Проверяем правила
     const hasLength = pwd.length >= 8;
     const hasLetter = /[a-zA-Zа-яА-Я]/.test(pwd);
     const hasNumber = /\d/.test(pwd);
-    const noSpaces = !/\s/.test(pwd) && pwd.length > 0; // <-- Проверка на отсутствие пробелов
+    const noSpaces = !/\s/.test(pwd) && pwd.length > 0;
     const isMatch = (pwd === confirmPwd) && (pwd.length > 0);
 
     updateRuleUI("rule-length", hasLength);
     updateRuleUI("rule-letter", hasLetter);
     updateRuleUI("rule-number", hasNumber);
-    updateRuleUI("rule-space", noSpaces); // <-- Обновляем интерфейс
+    updateRuleUI("rule-space", noSpaces); 
     updateRuleUI("rule-match", isMatch);
 
-    // Кнопка сработает только если все 5 условий выполнены
     return hasLength && hasLetter && hasNumber && noSpaces && isMatch;
 }
 
 // --- 3. АВТОРИЗАЦИЯ И РЕГИСТРАЦИЯ ---
-
 function parseError(errorData) {
-    if (Array.isArray(errorData.detail)) return "Пожалуйста, проверьте правильность введенных данных.";
+    if (Array.isArray(errorData.detail)) return "Пожалуйста, проверьте правильность данных.";
     return errorData.detail || "Неизвестная ошибка сервера";
 }
 
@@ -120,8 +137,8 @@ async function register() {
     const u = document.getElementById("reg-username").value.trim();
     const p = document.getElementById("reg-password").value.trim();
 
-    if (!u) { showMsg("message-auth", "Введите логин", "red"); return; }
-    if (!validatePassword()) { showMsg("message-auth", "Пароль не соответствует требованиям", "red"); return; }
+    if (!u) { showMsg("message-reg", "Введите логин", "red"); return; }
+    if (!validatePassword()) { showMsg("message-reg", "Пароль не соответствует требованиям", "red"); return; }
 
     setButtonLoading("btn-register", true, "Создать аккаунт");
 
@@ -134,14 +151,14 @@ async function register() {
 
         if (response.ok) {
             showMsg("message-auth", "Регистрация успешна! Выполните вход.", "green");
-            switchTab('login'); // Автоматически переключаем на вкладку входа
+            switchTab('login'); 
             document.getElementById("login-username").value = u;
         } else {
             const error = await response.json();
-            showMsg("message-auth", parseError(error), "red");
+            showMsg("message-reg", parseError(error), "red");
         }
     } catch (e) {
-        showMsg("message-auth", "Ошибка сети", "red");
+        showMsg("message-reg", "Ошибка сети", "red");
     } finally {
         setButtonLoading("btn-register", false, "Создать аккаунт");
     }
@@ -169,10 +186,11 @@ async function login() {
         if (response.ok) {
             const data = await response.json();
             if (data.mfa_required) {
-                document.getElementById("loginMfaBlock").style.display = "block";
-                showMsg("message-auth", data.message, "#4a90e2");
+                // Плавно показываем блок MFA
+                document.getElementById("loginMfaBlock").classList.add("active");
+                showMsg("message-auth", data.message, "info");
             } else {
-                completeLogin(data.access_token);
+                completeLogin();
             }
         } else {
             const error = await response.json();
@@ -190,7 +208,10 @@ async function loginWithMfa() {
     const p = document.getElementById("login-password").value.trim();
     const code = document.getElementById("loginMfaCode").value.trim();
 
-    if (!code || code.length !== 6) { showMsg("message-auth", "Код должен состоять из 6 цифр.", "red"); return; }
+    if (!code || (code.length !== 6 && code.length !== 8)) { 
+        showMsg("message-auth", "Введите 6-значный код из приложения или 8-значный резервный код.", "red"); 
+        return; 
+    }
 
     setButtonLoading("btn-login-mfa", true, "Подтвердить вход");
 
@@ -207,8 +228,7 @@ async function loginWithMfa() {
         });
 
         if (response.ok) {
-            const data = await response.json();
-            completeLogin(data.access_token);
+            completeLogin();
         } else {
             const error = await response.json();
             showMsg("message-auth", parseError(error), "red");
@@ -220,26 +240,21 @@ async function loginWithMfa() {
     }
 }
 
-function completeLogin(token) {
-    localStorage.setItem("jwt_token", token);
+function completeLogin() {
     checkAuthStatus();
-    showMsg("message-dash", "Успешный вход!", "green");
+    // Небольшая задержка, чтобы успел прорисоваться дашборд
+    setTimeout(() => showMsg("message-dash", "Успешный вход!", "green"), 300);
 }
 
-function logout() {
-    localStorage.removeItem("jwt_token");
+async function logout() {
+    await fetch("/logout", { method: "POST" });
     showMsg("message-auth", "Вы успешно вышли из системы", "green");
     checkAuthStatus();
 }
 
 // --- 4. ЗАЩИЩЕННЫЕ ОПЕРАЦИИ (ЛИЧНЫЙ КАБИНЕТ) ---
-
 async function getSecretData() {
-    const token = localStorage.getItem("jwt_token");
-    const response = await fetch("/protected_data", {
-        method: "GET",
-        headers: { "Authorization": "Bearer " + token }
-    });
+    const response = await fetch("/protected_data", { method: "GET" });
 
     if (response.ok) {
         const data = await response.json();
@@ -251,15 +266,11 @@ async function getSecretData() {
 }
 
 async function setupMFA() {
-    const token = localStorage.getItem("jwt_token");
-    const response = await fetch("/mfa/setup", {
-        method: "GET",
-        headers: { "Authorization": "Bearer " + token }
-    });
+    const response = await fetch("/mfa/setup", { method: "GET" });
 
     if (response.ok) {
         const data = await response.json();
-        document.getElementById("mfaSetupBlock").style.display = "block";
+        document.getElementById("mfaSetupBlock").classList.add("active");
         document.getElementById("qrCodeImage").src = data.qr_code_url;
         document.getElementById("qrCodeImage").style.display = "block";
     } else {
@@ -269,7 +280,6 @@ async function setupMFA() {
 }
 
 async function verifyMFA() {
-    const token = localStorage.getItem("jwt_token");
     const code = document.getElementById("mfaCode").value;
     
     setButtonLoading("btn-verify-mfa", true, "Подтвердить привязку");
@@ -277,18 +287,33 @@ async function verifyMFA() {
     try {
         const response = await fetch("/mfa/verify", {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Bearer " + token
-            },
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ code: code })
         });
 
         if (response.ok) {
             const data = await response.json();
             showMsg("message-dash", data.message, "green");
-            document.getElementById("mfaSetupBlock").style.display = "none";
-            document.getElementById("mfaCode").value = "";
+            
+            // Если сервер прислал резервные коды, красиво их отображаем
+            if (data.backup_codes) {
+                document.getElementById("backupCodesBlock").classList.add("active");
+                const ul = document.getElementById("backupCodesList");
+                ul.innerHTML = "";
+                data.backup_codes.forEach(code => {
+                    const div = document.createElement("div");
+                    div.className = "backup-code";
+                    div.innerText = code;
+                    ul.appendChild(div);
+                });
+                
+                // Прячем всё лишнее, чтобы пользователь сосредоточился на кодах
+                document.getElementById("mfaCode").style.display = "none";
+                document.getElementById("btn-verify-mfa").style.display = "none";
+                document.getElementById("qrCodeImage").style.display = "none";
+                document.querySelector("#mfaSetupBlock .mfa-title").innerText = "Настройка завершена";
+                document.querySelector("#mfaSetupBlock .mfa-desc").style.display = "none";
+            }
         } else {
             const error = await response.json();
             showMsg("message-dash", error.detail, "red");

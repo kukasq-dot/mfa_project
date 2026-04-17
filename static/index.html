@@ -3,157 +3,494 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MFA Система Безопасности</title>
+    <title>SecureAuth - MFA System</title>
     <style>
-        /* Базовые стили */
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: linear-gradient(135deg, #2b5876 0%, #4e4376 100%);
-            display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; color: #333;
-        }
-        .card { 
-            background: white; padding: 40px; border-radius: 16px; 
-            box-shadow: 0 15px 30px rgba(0,0,0,0.3); width: 350px; text-align: center; 
-            transition: all 0.3s ease; position: relative;
-        }
-        h2 { margin-top: 0; color: #2c3e50; font-weight: 700; }
-        
-        /* Вкладки (Tabs) для переключения Вход / Регистрация */
-        .tabs { display: flex; margin-bottom: 20px; border-bottom: 2px solid #eef2f5; }
-        .tab { 
-            flex: 1; padding: 10px; cursor: pointer; font-weight: bold; color: #7f8c8d; 
-            transition: all 0.3s; border-bottom: 3px solid transparent; 
-        }
-        .tab.active { color: #4a90e2; border-bottom-color: #4a90e2; }
-        .tab:hover:not(.active) { color: #34495e; }
-
-        /* Экраны */
-        #auth-view, #dashboard-view { display: none; }
-        #login-form, #register-form { display: none; }
-        #login-form.active, #register-form.active { display: block; animation: fadeIn 0.4s; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-
-        /* Поля ввода */
-        .input-group { position: relative; width: 100%; margin: 10px 0; }
-        input { 
-            width: 100%; padding: 12px; border: 2px solid #eef2f5; 
-            border-radius: 8px; box-sizing: border-box; background-color: #f8fafc;
-            transition: border-color 0.3s, background-color 0.3s;
-        }
-        input:focus { border-color: #4a90e2; background-color: white; outline: none; }
-        
-        /* Глазок для пароля */
-        .eye-icon {
-            position: absolute; right: 15px; top: 12px; cursor: pointer; 
-            opacity: 0.5; transition: opacity 0.2s; user-select: none;
-        }
-        .eye-icon:hover { opacity: 1; }
-
-        /* Динамические правила пароля */
-        .password-rules {
-            text-align: left; font-size: 12px; background: #f8f9fa; 
-            padding: 10px; border-radius: 8px; margin-top: 5px; color: #7f8c8d;
-            display: none; /* Покажем только когда пользователь начнет вводить */
-        }
-        .password-rules p { margin: 3px 0; display: flex; align-items: center; }
-        .password-rules .valid { color: #2ecc71; }
-        .password-rules .invalid { color: #e74c3c; }
-        .rule-icon { margin-right: 5px; font-size: 14px; }
-
-        /* Кнопки */
-        button { 
-            width: 100%; padding: 12px; border: none; border-radius: 8px; 
-            color: white; cursor: pointer; margin-top: 15px; font-weight: bold; font-size: 15px;
-            transition: all 0.2s;
-        }
-        button:disabled { background-color: #bdc3c7 !important; cursor: not-allowed; transform: none !important; opacity: 1 !important;}
-        button:active:not(:disabled) { transform: scale(0.97); }
-        button:hover:not(:disabled) { opacity: 0.9; box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
-        
-        .btn-primary { background-color: #4a90e2; }
-        .btn-secondary { background-color: #2ecc71; }
-        .btn-warning { background-color: #f39c12; }
-        .btn-danger { background-color: #e74c3c; }
-        
-        /* Блоки уведомлений и MFA */
-        .msg-box { margin-top: 15px; font-size: 14px; font-weight: 600; min-height: 20px;}
-        #loginMfaBlock { display: none; margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #4a90e2; }
-        #mfaSetupBlock { display: none; margin-top: 25px; padding: 20px; background: #f8fafc; border-radius: 12px; border: 1px solid #eef2f5; }
-        #qrCodeImage { max-width: 180px; margin: 15px auto; border: 5px solid white; box-shadow: 0 4px 15px rgba(0,0,0,0.1); border-radius: 10px; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: linear-gradient(135deg, #0f0c29, #302b63, #24243e); min-height: 100vh; display: flex; justify-content: center; align-items: center; overflow-x: hidden; }
+        .container { width: 100%; max-width: 500px; padding: 20px; }
+        .bg-decoration { position: fixed; width: 300px; height: 300px; border-radius: 50%; opacity: 0.1; pointer-events: none; }
+        .bg-decoration:nth-child(1) { top: -100px; right: -100px; background: #667eea; animation: float 6s ease-in-out infinite; }
+        .bg-decoration:nth-child(2) { bottom: -100px; left: -100px; background: #764ba2; animation: float 8s ease-in-out infinite reverse; }
+        @keyframes float { 0%, 100% { transform: translate(0px, 0px); } 50% { transform: translate(30px, 30px); } }
+        .card { background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 20px; padding: 40px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); animation: slideUp 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); position: relative; z-index: 10; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(40px); } to { opacity: 1; transform: translateY(0); } }
+        .header { text-align: center; margin-bottom: 35px; }
+        .logo { font-size: 40px; margin-bottom: 15px; }
+        .title { color: white; font-size: 28px; font-weight: 700; margin-bottom: 8px; background: linear-gradient(135deg, #667eea, #764ba2); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .subtitle { color: #a0aec0; font-size: 13px; letter-spacing: 0.5px; }
+        .tabs { display: flex; gap: 8px; margin-bottom: 30px; background: rgba(0, 0, 0, 0.2); padding: 6px; border-radius: 14px; border: 1px solid rgba(255, 255, 255, 0.05); }
+        .tab { flex: 1; padding: 10px 16px; background: transparent; border: none; cursor: pointer; color: #cbd5e0; font-weight: 600; font-size: 13px; border-radius: 10px; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position: relative; }
+        .tab.active { background: linear-gradient(135deg, #667eea, #764ba2); color: white; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); }
+        .tab:hover:not(.active) { color: #e2e8f0; }
+        .form-section { display: none; animation: fadeIn 0.4s ease; }
+        .form-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .input-group { margin-bottom: 18px; position: relative; }
+        .input-group input { width: 100%; padding: 14px 16px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; color: white; font-size: 14px; transition: all 0.3s ease; font-family: inherit; }
+        .input-group input::placeholder { color: #718096; }
+        .input-group input:focus { outline: none; background: rgba(255, 255, 255, 0.08); border-color: #667eea; box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15); }
+        .input-icon { position: absolute; right: 14px; top: 50%; transform: translateY(-50%); cursor: pointer; opacity: 0.6; transition: opacity 0.2s; font-size: 18px; user-select: none; }
+        .input-icon:hover { opacity: 1; }
+        .password-checker { background: rgba(0, 0, 0, 0.3); border-left: 3px solid #667eea; padding: 16px; border-radius: 10px; margin: 20px 0; display: none; animation: slideDown 0.3s ease; }
+        .password-checker.active { display: block; }
+        @keyframes slideDown { from { opacity: 0; max-height: 0; transform: translateY(-10px); } to { opacity: 1; max-height: 500px; transform: translateY(0); } }
+        .check-item { display: flex; align-items: center; margin: 8px 0; color: #cbd5e0; font-size: 12px; transition: color 0.3s; }
+        .check-item.valid { color: #48bb78; }
+        .check-icon { margin-right: 8px; font-weight: bold; font-size: 14px; }
+        .btn { width: 100%; padding: 13px 18px; border: none; border-radius: 12px; color: white; font-weight: 700; font-size: 14px; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); margin-top: 12px; position: relative; overflow: hidden; text-transform: uppercase; letter-spacing: 0.5px; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn::before { content: ''; position: absolute; top: 50%; left: 50%; width: 0; height: 0; border-radius: 50%; background: rgba(255, 255, 255, 0.2); transform: translate(-50%, -50%); transition: width 0.5s, height 0.5s; }
+        .btn:hover:not(:disabled)::before { width: 300px; height: 300px; }
+        .btn-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); }
+        .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5); }
+        .btn-secondary { background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); box-shadow: 0 4px 15px rgba(245, 87, 108, 0.3); }
+        .btn-secondary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(245, 87, 108, 0.5); }
+        .btn-warning { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: #1a202c; box-shadow: 0 4px 15px rgba(250, 112, 154, 0.3); }
+        .btn-danger { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3); }
+        .mfa-block { background: rgba(102, 126, 234, 0.05); border: 1px solid rgba(102, 126, 234, 0.2); border-radius: 14px; padding: 22px; margin-top: 25px; display: none; animation: slideDown 0.4s ease; }
+        .mfa-block.active { display: block; }
+        .mfa-icon { font-size: 32px; margin-bottom: 12px; }
+        .mfa-title { color: white; font-weight: 700; font-size: 15px; margin-bottom: 6px; }
+        .mfa-desc { color: #a0aec0; font-size: 12px; margin-bottom: 18px; line-height: 1.5; }
+        #qrCodeImage { max-width: 180px; margin: 20px auto; padding: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 12px; display: none; }
+        .backup-section { background: linear-gradient(135deg, rgba(255, 193, 7, 0.1), rgba(255, 152, 0, 0.1)); border-left: 3px solid #ffc107; padding: 16px; border-radius: 10px; margin-top: 20px; display: none; }
+        .backup-section.active { display: block; animation: slideDown 0.4s ease; }
+        .backup-warning { color: #ffc107; font-weight: 700; font-size: 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+        .backup-codes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-family: 'Courier New', monospace; font-size: 13px; font-weight: bold; }
+        .backup-code { background: rgba(0, 0, 0, 0.3); padding: 8px 10px; border-radius: 6px; border: 1px solid rgba(255, 255, 255, 0.1); text-align: center; color: #e2e8f0; letter-spacing: 2px; }
+        .message-box { padding: 14px 16px; border-radius: 10px; margin-top: 20px; font-size: 13px; font-weight: 600; display: none; animation: slideDown 0.3s ease; }
+        .message-box.active { display: block; }
+        .message-box.success { background: rgba(72, 187, 120, 0.1); border-left: 3px solid #48bb78; color: #9ae6b4; }
+        .message-box.error { background: rgba(245, 101, 101, 0.1); border-left: 3px solid #f56565; color: #fc8181; }
+        .message-box.info { background: rgba(102, 126, 234, 0.1); border-left: 3px solid #667eea; color: #a5b4fc; }
+        .dashboard-header { text-align: center; margin-bottom: 30px; }
+        .dashboard-header h2 { color: white; font-size: 26px; margin-bottom: 5px; }
+        .dashboard-badge { display: inline-block; background: linear-gradient(135deg, #48bb78, #38a169); color: white; padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; margin-top: 10px; }
+        .button-group { display: flex; flex-direction: column; gap: 10px; }
+        @media (max-width: 480px) { .card { padding: 30px 20px; } .title { font-size: 24px; } .btn { padding: 12px 16px; font-size: 13px; } .backup-codes { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
+    <div class="bg-decoration"></div>
+    <div class="bg-decoration"></div>
 
-    <div class="card" id="auth-view">
-        <div class="tabs">
-            <div class="tab active" id="tab-login" onclick="switchTab('login')">Вход</div>
-            <div class="tab" id="tab-register" onclick="switchTab('register')">Регистрация</div>
+    <div class="container">
+        <div class="card" id="auth-view">
+            <div class="header">
+                <div class="logo">🔐</div>
+                <h1 class="title">SecureAuth</h1>
+                <p class="subtitle">Система многофакторной аутентификации</p>
+            </div>
+
+            <div class="tabs">
+                <button class="tab active" id="tab-login" onclick="switchTab('login')">Вход</button>
+                <button class="tab" id="tab-register" onclick="switchTab('register')">Регистрация</button>
+            </div>
+
+            <div id="login-form" class="form-section active">
+                <div class="input-group">
+                    <input type="text" id="login-username" placeholder="Логин" autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <input type="password" id="login-password" placeholder="Пароль">
+                    <span class="input-icon" onclick="togglePassword('login-password', this)">👁️</span>
+                </div>
+
+                <button class="btn btn-primary" id="btn-login" onclick="login()">Войти в систему</button>
+
+                <div id="loginMfaBlock" class="mfa-block">
+                    <div class="mfa-icon">🔒</div>
+                    <div class="mfa-title">Двухэтапная проверка</div>
+                    <div class="mfa-desc">Введите 6-значный код из приложения аутентификатора или резервный код</div>
+                    <div class="input-group">
+                        <input type="text" id="loginMfaCode" placeholder="Код или Бэкап-код" maxlength="8" style="text-align: center; letter-spacing: 3px; font-weight: bold; font-size: 16px;">
+                    </div>
+                    <button class="btn btn-secondary" id="btn-login-mfa" onclick="loginWithMfa()">Подтвердить вход</button>
+                </div>
+
+                <div id="message-auth" class="message-box"></div>
+            </div>
+
+            <div id="register-form" class="form-section">
+                <div class="input-group">
+                    <input type="text" id="reg-username" placeholder="Выберите логин" autocomplete="off">
+                </div>
+                <div class="input-group">
+                    <input type="password" id="reg-password" placeholder="Создайте пароль" oninput="validatePassword()">
+                    <span class="input-icon" onclick="togglePassword('reg-password', this)">👁️</span>
+                </div>
+                <div class="input-group">
+                    <input type="password" id="reg-password-confirm" placeholder="Подтвердите пароль" oninput="validatePassword()">
+                    <span class="input-icon" onclick="togglePassword('reg-password-confirm', this)">👁️</span>
+                </div>
+
+                <div class="password-checker" id="password-rules">
+                    <div class="check-item" id="rule-length">
+                        <span class="check-icon">◯</span> <span>Минимум 8 символов</span>
+                    </div>
+                    <div class="check-item" id="rule-letter">
+                        <span class="check-icon">◯</span> <span>Хотя бы одна буква</span>
+                    </div>
+                    <div class="check-item" id="rule-number">
+                        <span class="check-icon">◯</span> <span>Хотя бы одна цифра</span>
+                    </div>
+                    <div class="check-item" id="rule-space">
+                        <span class="check-icon">◯</span> <span>Без пробелов</span>
+                    </div>
+                    <div class="check-item" id="rule-match">
+                        <span class="check-icon">◯</span> <span>Пароли совпадают</span>
+                    </div>
+                </div>
+
+                <button class="btn btn-secondary" id="btn-register" onclick="register()">Создать аккаунт</button>
+                <div id="message-reg" class="message-box"></div>
+            </div>
         </div>
 
-        <div id="login-form" class="active">
-            <div class="input-group">
-                <input type="text" id="login-username" placeholder="Логин" autocomplete="off">
+        <div class="card" id="dashboard-view" style="display: none;">
+            <div class="dashboard-header">
+                <h2>Панель управления</h2>
+                <div class="dashboard-badge">✓ Вы авторизованы</div>
             </div>
-            <div class="input-group">
-                <input type="password" id="login-password" placeholder="Пароль">
-                <span class="eye-icon" onclick="togglePassword('login-password', this)">👁️</span>
-            </div>
-            
-            <button class="btn-primary" id="btn-login" onclick="login()">Войти в систему</button>
 
-            <div id="loginMfaBlock">
-                <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: bold; color: #2c3e50;">🔒 Двухэтапная проверка</p>
-                <input type="text" id="loginMfaCode" placeholder="Код из Google Auth" maxlength="6" style="text-align: center; letter-spacing: 2px; font-weight: bold;">
-                <button class="btn-primary" id="btn-login-mfa" onclick="loginWithMfa()">Подтвердить вход</button>
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="getSecretData()">📊 Проверить доступ к API</button>
+                <button class="btn btn-warning" onclick="setupMFA()">⚙️ Настроить 2FA</button>
+                <button class="btn btn-danger" onclick="logout()">🚪 Выйти из системы</button>
             </div>
+
+            <div id="mfaSetupBlock" class="mfa-block">
+                <div class="mfa-icon">🔐</div>
+                <div class="mfa-title">Привязка TOTP-устройства</div>
+                <div class="mfa-desc">Используйте приложение аутентификатора (Google Authenticator, Authy, Microsoft Authenticator)</div>
+
+                <img id="qrCodeImage" src="" alt="QR Code">
+
+                <div class="input-group">
+                    <input type="text" id="mfaCode" placeholder="000000" maxlength="6" style="text-align: center; letter-spacing: 3px; font-weight: bold; font-size: 16px;">
+                </div>
+                <button class="btn btn-warning" id="btn-verify-mfa" onclick="verifyMFA()">Подтвердить привязку</button>
+
+                <div id="backupCodesBlock" class="backup-section">
+                    <div class="backup-warning">
+                        <span>⚠️</span>
+                        <span>Сохраните коды восстановления - они показываются только один раз!</span>
+                    </div>
+                    <div class="backup-codes" id="backupCodesList"></div>
+                </div>
+            </div>
+
+            <div id="message-dash" class="message-box"></div>
         </div>
-
-        <div id="register-form">
-            <div class="input-group">
-                <input type="text" id="reg-username" placeholder="Придумайте логин" autocomplete="off">
-            </div>
-            <div class="input-group">
-                <input type="password" id="reg-password" placeholder="Придумайте пароль" oninput="validatePassword()">
-                <span class="eye-icon" onclick="togglePassword('reg-password', this)">👁️</span>
-            </div>
-            <div class="input-group">
-                <input type="password" id="reg-password-confirm" placeholder="Повторите пароль" oninput="validatePassword()">
-                <span class="eye-icon" onclick="togglePassword('reg-password-confirm', this)">👁️</span>
-            </div>
-
-            <div class="password-rules" id="password-rules">
-                <p id="rule-length" class="invalid"><span class="rule-icon">❌</span> Минимум 8 символов</p>
-                <p id="rule-letter" class="invalid"><span class="rule-icon">❌</span> Хотя бы одна буква</p>
-                <p id="rule-number" class="invalid"><span class="rule-icon">❌</span> Хотя бы одна цифра</p>
-                <p id="rule-space" class="valid"><span class="rule-icon">✅</span> Без пробелов</p> <p id="rule-match" class="invalid"><span class="rule-icon">❌</span> Пароли совпадают</p>
-            </div>
-
-            <button class="btn-secondary" id="btn-register" onclick="register()">Создать аккаунт</button>
-        </div>
-        
-        <div id="message-auth" class="msg-box"></div>
     </div>
 
-    <div class="card" id="dashboard-view">
-        <h2>Панель управления</h2>
-        <p style="color: #7f8c8d; font-size: 14px; margin-bottom: 25px;">Защищенная зона</p>
-        
-        <button class="btn-primary" onclick="getSecretData()">Проверить доступ к API</button>
-        <button class="btn-warning" onclick="setupMFA()">⚙️ Настроить 2FA (QR-код)</button>
-        <button class="btn-danger" onclick="logout()" style="margin-top: 25px;">🚪 Выйти из аккаунта</button>
+    <script>
+        window.onload = function() { checkAuthStatus(); };
 
-        <div id="message-dash" class="msg-box"></div>
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch("/auth/status");
+                if (response.ok) {
+                    document.getElementById("auth-view").style.display = "none";
+                    document.getElementById("dashboard-view").style.display = "block";
+                    resetAuthForms();
+                } else {
+                    document.getElementById("auth-view").style.display = "block";
+                    document.getElementById("dashboard-view").style.display = "none";
+                }
+            } catch(e) {
+                console.error("Ошибка проверки статуса");
+            }
+        }
 
-        <div id="mfaSetupBlock">
-            <h3 style="margin-top: 0; color: #2c3e50; font-size: 16px;">Привязка устройства</h3>
-            <p style="font-size: 12px; color: #7f8c8d; line-height: 1.4;">Отсканируйте QR-код в приложении аутентификатора:</p>
-            <img id="qrCodeImage" src="" alt="QR Code" style="display:none;">
+        function switchTab(tabName) {
+            document.getElementById("message-auth").classList.remove('active');
+            document.getElementById("message-reg").classList.remove('active');
+            document.getElementById("loginMfaBlock").classList.remove("active");
             
-            <input type="text" id="mfaCode" placeholder="Введите 6 цифр" maxlength="6" style="text-align: center; letter-spacing: 2px; font-weight: bold;">
-            <button class="btn-warning" id="btn-verify-mfa" onclick="verifyMFA()">Подтвердить привязку</button>
-        </div>
-    </div>
+            document.getElementById("tab-login").classList.remove("active");
+            document.getElementById("tab-register").classList.remove("active");
+            document.getElementById("tab-" + tabName).classList.add("active");
 
-    <script src="/static/app.js"></script>
+            document.getElementById("login-form").classList.remove("active");
+            document.getElementById("register-form").classList.remove("active");
+            document.getElementById(tabName + "-form").classList.add("active");
+        }
+
+        function togglePassword(inputId, iconElement) {
+            const input = document.getElementById(inputId);
+            if (input.type === "password") {
+                input.type = "text";
+                iconElement.innerText = "🙈";
+            } else {
+                input.type = "password";
+                iconElement.innerText = "👁️";
+            }
+        }
+
+        function resetAuthForms() {
+            document.getElementById("login-username").value = "";
+            document.getElementById("login-password").value = "";
+            document.getElementById("loginMfaCode").value = "";
+            document.getElementById("reg-username").value = "";
+            document.getElementById("reg-password").value = "";
+            document.getElementById("reg-password-confirm").value = "";
+            
+            document.getElementById("password-rules").classList.remove("active");
+            document.getElementById("loginMfaBlock").classList.remove("active");
+        }
+
+        function showMsg(elementId, msg, type) {
+            const el = document.getElementById(elementId);
+            if(!el) return;
+            el.classList.remove('success', 'error', 'info', 'active');
+            
+            if (type === 'green') el.classList.add('success');
+            else if (type === 'red') el.classList.add('error');
+            else el.classList.add('info'); 
+            
+            el.innerText = msg;
+            el.classList.add('active'); 
+            
+            setTimeout(() => { 
+                el.classList.remove('active'); 
+            }, 6000); 
+        }
+
+        function setButtonLoading(buttonId, isLoading, defaultText) {
+            const btn = document.getElementById(buttonId);
+            if(!btn) return;
+            if (isLoading) {
+                btn.disabled = true;
+                btn.innerText = "Ожидание...";
+            } else {
+                btn.disabled = false;
+                btn.innerText = defaultText;
+            }
+        }
+
+        function updateRuleUI(ruleId, isValid) {
+            const el = document.getElementById(ruleId);
+            if(!el) return;
+            const icon = el.querySelector('.check-icon');
+            if(!icon) return;
+            
+            if (isValid) {
+                el.classList.add("valid");
+                icon.innerText = "✓";
+            } else {
+                el.classList.remove("valid");
+                icon.innerText = "◯";
+            }
+        }
+
+        function validatePassword() {
+            const pwd = document.getElementById("reg-password").value;
+            const confirmPwd = document.getElementById("reg-password-confirm").value;
+            const rulesBox = document.getElementById("password-rules");
+            
+            if(!rulesBox) return false;
+
+            if (pwd.length > 0) rulesBox.classList.add("active");
+            else rulesBox.classList.remove("active");
+
+            const hasLength = pwd.length >= 8;
+            const hasLetter = /[a-zA-Zа-яА-Я]/.test(pwd);
+            const hasNumber = /\d/.test(pwd);
+            const noSpaces = !/\s/.test(pwd) && pwd.length > 0;
+            const isMatch = (pwd === confirmPwd) && (pwd.length > 0);
+
+            updateRuleUI("rule-length", hasLength);
+            updateRuleUI("rule-letter", hasLetter);
+            updateRuleUI("rule-number", hasNumber);
+            updateRuleUI("rule-space", noSpaces); 
+            updateRuleUI("rule-match", isMatch);
+
+            return hasLength && hasLetter && hasNumber && noSpaces && isMatch;
+        }
+
+        async function register() {
+            const u = document.getElementById("reg-username").value.trim();
+            const p = document.getElementById("reg-password").value.trim();
+
+            if (!u) { showMsg("message-reg", "Введите логин", "red"); return; }
+            if (!validatePassword()) { showMsg("message-reg", "Пароль не соответствует требованиям", "red"); return; }
+
+            setButtonLoading("btn-register", true, "Создать аккаунт");
+
+            try {
+                const response = await fetch("/register", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username: u, password: p })
+                });
+
+                if (response.ok) {
+                    showMsg("message-auth", "Регистрация успешна! Выполните вход.", "green");
+                    switchTab('login'); 
+                    document.getElementById("login-username").value = u;
+                } else {
+                    const error = await response.json();
+                    showMsg("message-reg", error.detail || "Ошибка", "red");
+                }
+            } catch (e) {
+                showMsg("message-reg", "Ошибка сети", "red");
+            } finally {
+                setButtonLoading("btn-register", false, "Создать аккаунт");
+            }
+        }
+
+        async function login() {
+            const u = document.getElementById("login-username").value.trim();
+            const p = document.getElementById("login-password").value.trim();
+
+            if (!u || !p) { showMsg("message-auth", "Введите логин и пароль.", "red"); return; }
+
+            setButtonLoading("btn-login", true, "Войти в систему");
+
+            const formData = new URLSearchParams();
+            formData.append("username", u);
+            formData.append("password", p);
+
+            try {
+                const response = await fetch("/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.mfa_required) {
+                        document.getElementById("loginMfaBlock").classList.add("active");
+                        showMsg("message-auth", data.message, "info");
+                    } else {
+                        completeLogin();
+                    }
+                } else {
+                    const error = await response.json();
+                    showMsg("message-auth", error.detail || "Ошибка", "red");
+                }
+            } catch (e) {
+                showMsg("message-auth", "Ошибка соединения", "red");
+            } finally {
+                setButtonLoading("btn-login", false, "Войти в систему");
+            }
+        }
+
+        async function loginWithMfa() {
+            const u = document.getElementById("login-username").value.trim();
+            const p = document.getElementById("login-password").value.trim();
+            const code = document.getElementById("loginMfaCode").value.trim();
+
+            if (!code || (code.length !== 6 && code.length !== 8)) { 
+                showMsg("message-auth", "Введите 6-значный код или 8-значный резервный код.", "red"); 
+                return; 
+            }
+
+            setButtonLoading("btn-login-mfa", true, "Подтвердить вход");
+
+            const formData = new URLSearchParams();
+            formData.append("username", u);
+            formData.append("password", p);
+            formData.append("mfa_code", code);
+
+            try {
+                const response = await fetch("/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    completeLogin();
+                } else {
+                    const error = await response.json();
+                    showMsg("message-auth", error.detail || "Ошибка", "red");
+                }
+            } catch (e) {
+                showMsg("message-auth", "Ошибка сети", "red");
+            } finally {
+                setButtonLoading("btn-login-mfa", false, "Подтвердить вход");
+            }
+        }
+
+        function completeLogin() {
+            checkAuthStatus();
+            setTimeout(() => showMsg("message-dash", "Успешный вход!", "green"), 300);
+        }
+
+        async function logout() {
+            await fetch("/logout", { method: "POST" });
+            showMsg("message-auth", "Вы успешно вышли из системы", "green");
+            checkAuthStatus();
+        }
+
+        async function getSecretData() {
+            const response = await fetch("/protected_data", { method: "GET" });
+            if (response.ok) {
+                const data = await response.json();
+                showMsg("message-dash", "Доступ разрешен: " + data.message, "green");
+            } else {
+                logout();
+                showMsg("message-auth", "Сессия истекла. Войдите заново.", "red");
+            }
+        }
+
+        async function setupMFA() {
+            const response = await fetch("/mfa/setup", { method: "GET" });
+            if (response.ok) {
+                const data = await response.json();
+                document.getElementById("mfaSetupBlock").classList.add("active");
+                document.getElementById("qrCodeImage").src = data.qr_code_url;
+                document.getElementById("qrCodeImage").style.display = "block";
+            } else {
+                const error = await response.json();
+                showMsg("message-dash", "Внимание: " + error.detail, "red");
+            }
+        }
+
+        async function verifyMFA() {
+            const code = document.getElementById("mfaCode").value;
+            setButtonLoading("btn-verify-mfa", true, "Подтвердить привязку");
+            try {
+                const response = await fetch("/mfa/verify", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ code: code })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showMsg("message-dash", data.message, "green");
+                    
+                    if (data.backup_codes) {
+                        document.getElementById("backupCodesBlock").classList.add("active");
+                        const ul = document.getElementById("backupCodesList");
+                        ul.innerHTML = "";
+                        data.backup_codes.forEach(code => {
+                            const div = document.createElement("div");
+                            div.className = "backup-code";
+                            div.innerText = code;
+                            ul.appendChild(div);
+                        });
+                        
+                        document.getElementById("mfaCode").style.display = "none";
+                        document.getElementById("btn-verify-mfa").style.display = "none";
+                        document.getElementById("qrCodeImage").style.display = "none";
+                        document.querySelector("#mfaSetupBlock .mfa-title").innerText = "Настройка завершена";
+                        document.querySelector("#mfaSetupBlock .mfa-desc").style.display = "none";
+                    }
+                } else {
+                    const error = await response.json();
+                    showMsg("message-dash", error.detail || "Ошибка", "red");
+                }
+            } catch (e) {
+                showMsg("message-dash", "Ошибка сети", "red");
+            } finally {
+                setButtonLoading("btn-verify-mfa", false, "Подтвердить привязку");
+            }
+        }
+    </script>
 </body>
 </html>

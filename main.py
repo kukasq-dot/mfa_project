@@ -1,24 +1,30 @@
 import os
 from datetime import datetime, timedelta
-import jwt # Не забудь, что мы устанавливали PyJWT
-from fastapi import FastAPI, Depends, HTTPException
+import jwt
+from fastapi import FastAPI, Depends, HTTPException, Form, Response, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from passlib.context import CryptContext
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from fastapi import FastAPI, Depends, HTTPException, Form
 
 import pyotp
 import qrcode
 import base64
 from io import BytesIO
 
+import secrets
+
+# Импорты для лимитера (защита от брутфорса)
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 import models
 import schemas
 from database import engine, get_db
 
-# Даем команду SQLAlchemy создать таблицы в базе данных (если их еще нет)
+# Даем команду SQLAlchemy создать таблицы
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -26,19 +32,27 @@ app = FastAPI(
     description="API для системы многофакторной аутентификации. Дипломный проект."
 )
 
-# Подключаем папку со статикой (наш фронтенд)
+# Настраиваем лимитер (определяет пользователя по IP-адресу)
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Подключаем папку со статикой (фронтенд)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # --- НАСТРОЙКИ БЕЗОПАСНОСТИ И JWT ---
-# Секретный ключ для подписи токенов (берем из .env)
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "my_super_secret_diploma_key_2025")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30 # Токен "сгорает" через 30 минут
+ACCESS_TOKEN_EXPIRE_MINUTES = 30 
 
-# Настройка хеширования паролей
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-# Эта штука включает проверку токена и красивую кнопку "Authorize" в Swagger
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# Функция для чтения токена из защищенной HttpOnly куки
+def get_token_from_cookie(request: Request):
+    token = request.cookies.get("access_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="Не авторизован")
+    return token
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -55,12 +69,10 @@ def create_access_token(data: dict):
 
 # --- ЭНДПОИНТЫ ---
 
-# 1. Отдача главной страницы (Фронтенд)
 @app.get("/")
 def serve_frontend():
     return FileResponse("static/index.html")
 
-# 2. Регистрация
 @app.post("/register", response_model=schemas.UserResponse)
 def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
@@ -76,67 +88,91 @@ def register_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     
     return new_user
 
-# 3. Вход в систему (с проверкой MFA!)
+# Защита: Ограничение 5 запросов в минуту с одного IP
 @app.post("/login")
+@limiter.limit("5/minute")
 def login(
+    request: Request, 
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(), 
-    mfa_code: str = Form(None), # Новое поле: код из приложения (может быть пустым)
+    mfa_code: str = Form(None),
     db: Session = Depends(get_db)
 ):
-    # 1. Ищем пользователя и проверяем пароль
     user = db.query(models.User).filter(models.User.username == form_data.username).first()
     if not user or not verify_password(form_data.password, user.hashed_password):
         raise HTTPException(status_code=400, detail="Неверный логин или пароль")
     
-    # 2. ПРОВЕРКА ВТОРОГО ФАКТОРА
     if user.is_mfa_enabled:
-        # Если код еще не ввели, просим фронтенд его запросить
         if not mfa_code:
-            return {"mfa_required": True, "message": "Введите 6-значный код из Google Authenticator"}
+            return {"mfa_required": True, "message": "Введите код из приложения ИЛИ резервный код"}
         
-        # Если код ввели, проверяем его правильность
-        totp = pyotp.TOTP(user.totp_secret)
-        if not totp.verify(mfa_code):
-            raise HTTPException(status_code=400, detail="Неверный код MFA! Попробуйте еще раз.")
-    
-    # 3. Если MFA выключена ИЛИ код оказался верным — выдаем токен!
-    access_token = create_access_token(data={"sub": user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+        # Загружаем резервные коды пользователя в виде списка
+        backup_codes_list = user.backup_codes.split(",") if user.backup_codes else []
+        
+        is_valid_totp = False
+        is_backup_code = False
 
-# 4. Защищенная зона (пускает только с токеном)
+        # 1. Проверяем, является ли это одноразовым резервным кодом
+        if mfa_code in backup_codes_list:
+            is_backup_code = True
+            # Удаляем использованный код (он одноразовый!)
+            backup_codes_list.remove(mfa_code)
+            user.backup_codes = ",".join(backup_codes_list)
+            db.commit()
+        else:
+            # 2. Если это не резервный код, проверяем Google Authenticator
+            totp = pyotp.TOTP(user.totp_secret)
+            is_valid_totp = totp.verify(mfa_code)
+
+        # Если оба варианта не подошли — кидаем ошибку
+        if not (is_valid_totp or is_backup_code):
+            raise HTTPException(status_code=400, detail="Неверный код MFA или резервный код!")
+    
+    access_token = create_access_token(data={"sub": user.username})
+    
+    # Защита: Устанавливаем HttpOnly куку
+    response.set_cookie(
+        key="access_token", 
+        value=access_token, 
+        httponly=True,  # Кука недоступна для JavaScript (защита от XSS)
+        secure=False,   # Для HTTPS на продакшене поставить True
+        samesite="lax", # Защита от CSRF
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    return {"message": "Успешный вход"}
+
+@app.post("/logout")
+def logout(response: Response):
+    response.delete_cookie("access_token")
+    return {"message": "Успешный выход"}
+
+@app.get("/auth/status")
+def check_status(token: str = Depends(get_token_from_cookie)):
+    return {"authenticated": True}
+
 @app.get("/protected_data")
-def protected_route(token: str = Depends(oauth2_scheme)):
+def protected_route(token: str = Depends(get_token_from_cookie)):
     return {"message": "Успешный доступ в защищенную зону! Ваш токен валиден.", "token": token}
 
-# 5. Эндпоинт для генерации QR-кода (настройка MFA)
 @app.get("/mfa/setup")
-def setup_mfa(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
-    # Расшифровываем токен
+def setup_mfa(token: str = Depends(get_token_from_cookie), db: Session = Depends(get_db)):
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     username = payload.get("sub")
     user = db.query(models.User).filter(models.User.username == username).first()
 
-    # --- НАЧАЛО БЛОКА ЗАЩИТЫ ---
-    # ЗАЩИТА 1: Если MFA уже включена, блокируем перезапись!
     if user.is_mfa_enabled:
         raise HTTPException(status_code=400, detail="Двухфакторная защита уже включена и настроена!")
 
-    # ЗАЩИТА 2: Если пользователь уже запрашивал код, но не завершил настройку,
-    # мы выдаем ему старый ключ, чтобы телефон не рассинхронизировался.
     if user.totp_secret:
         secret = user.totp_secret
     else:
-        # Только если ключа вообще нет, генерируем новый
         secret = pyotp.random_base32()
         user.totp_secret = secret
         db.commit()
-    # --- КОНЕЦ БЛОКА ЗАЩИТЫ ---
 
-    # Создаем ссылку для Google Authenticator
     totp = pyotp.TOTP(secret)
     provisioning_uri = totp.provisioning_uri(name=user.username, issuer_name="Diploma MFA App")
 
-    # Рисуем картинку QR-кода
     qr = qrcode.make(provisioning_uri)
     buffered = BytesIO()
     qr.save(buffered, format="PNG")
@@ -147,9 +183,15 @@ def setup_mfa(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)
         "qr_code_url": f"data:image/png;base64,{qr_base64}"
     }
 
-# 6. Эндпоинт для проверки 6-значного кода и включения MFA
+# Защита: Ограничение перебора MFA
 @app.post("/mfa/verify")
-def verify_mfa(mfa_data: schemas.MFACode, token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def verify_mfa(
+    request: Request,
+    mfa_data: schemas.MFACode, 
+    token: str = Depends(get_token_from_cookie), 
+    db: Session = Depends(get_db)
+):
     payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
     username = payload.get("sub")
     user = db.query(models.User).filter(models.User.username == username).first()
@@ -157,11 +199,18 @@ def verify_mfa(mfa_data: schemas.MFACode, token: str = Depends(oauth2_scheme), d
     if not user.totp_secret:
         raise HTTPException(status_code=400, detail="Сначала сгенерируйте QR-код (MFA Setup)")
 
-    # Проверяем введенный код
     totp = pyotp.TOTP(user.totp_secret)
     if totp.verify(mfa_data.code):
-        user.is_mfa_enabled = True # Включаем защиту в базе данных!
+        user.is_mfa_enabled = True 
+        
+        # ГЕНЕРАЦИЯ РЕЗЕРВНЫХ КОДОВ (5 штук по 8 символов)
+        codes = [secrets.token_hex(4) for _ in range(5)]
+        user.backup_codes = ",".join(codes) # Сохраняем в БД через запятую
+        
         db.commit()
-        return {"message": "MFA успешно включена! Ваш аккаунт под защитой."}
+        return {
+            "message": "MFA успешно включена! Обязательно сохраните резервные коды.",
+            "backup_codes": codes # Отправляем коды на фронтенд
+        }
     else:
         raise HTTPException(status_code=400, detail="Неверный код. Попробуйте еще раз.")
