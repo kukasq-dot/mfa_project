@@ -188,6 +188,15 @@ async function login() {
             if (data.mfa_required) {
                 // Плавно показываем блок MFA
                 document.getElementById("loginMfaBlock").classList.add("active");
+                
+                // Если код ушел в Телеграм, меняем текст на экране
+                const descElement = document.querySelector("#loginMfaBlock .mfa-desc");
+                if (data.method === "telegram") {
+                    descElement.innerHTML = `<b>${data.message}</b><br><small>Действителен 3 минуты</small>`;
+                } else {
+                    descElement.innerText = "Введите 6-значный код из приложения аутентификатора или резервный код";
+                }
+                
                 showMsg("message-auth", data.message, "info");
             } else {
                 completeLogin();
@@ -322,5 +331,28 @@ async function verifyMFA() {
         showMsg("message-dash", "Ошибка сети", "red");
     } finally {
         setButtonLoading("btn-verify-mfa", false, "Подтвердить привязку");
+    }
+}
+
+async function setupTelegram() {
+    // Скрываем блок Google Auth, если он был открыт
+    const mfaBlock = document.getElementById("mfaSetupBlock");
+    if(mfaBlock) mfaBlock.classList.remove("active");
+
+    try {
+        const response = await fetch("/api/mfa/telegram/generate-link", { method: "POST" });
+
+        if (response.ok) {
+            const data = await response.json();
+            // Показываем блок Telegram и вставляем ссылку
+            document.getElementById("telegramSetupBlock").classList.add("active");
+            document.getElementById("telegramLink").href = data.telegram_url;
+            showMsg("message-dash", "Ссылка сгенерирована! Откройте бота.", "green");
+        } else {
+            const error = await response.json();
+            showMsg("message-dash", error.detail || "Ошибка генерации ссылки", "red");
+        }
+    } catch (e) {
+        showMsg("message-dash", "Ошибка сети", "red");
     }
 }

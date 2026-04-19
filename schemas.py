@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 # Схема для получения данных от пользователя при регистрации
@@ -17,6 +18,11 @@ class UserCreate(BaseModel):
 
 # Схема для отправки ответа пользователю (БЕЗ ПАРОЛЯ!)
 class UserResponse(BaseModel):
+    id: int
+    username: str
+    is_mfa_enabled: bool
+    telegram_chat_id: Optional[str] = None # НОВОЕ ПОЛЕ
+
     id: int
     username: str
     is_mfa_enabled: bool

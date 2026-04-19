@@ -47,6 +47,8 @@
         .btn-secondary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(245, 87, 108, 0.5); }
         .btn-warning { background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: #1a202c; box-shadow: 0 4px 15px rgba(250, 112, 154, 0.3); }
         .btn-danger { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3); }
+        .btn-telegram { background: linear-gradient(135deg, #0088cc 0%, #00aaff 100%); box-shadow: 0 4px 15px rgba(0, 136, 204, 0.3); }
+        .btn-telegram:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 136, 204, 0.5); }
         .mfa-block { background: rgba(102, 126, 234, 0.05); border: 1px solid rgba(102, 126, 234, 0.2); border-radius: 14px; padding: 22px; margin-top: 25px; display: none; animation: slideDown 0.4s ease; }
         .mfa-block.active { display: block; }
         .mfa-icon { font-size: 32px; margin-bottom: 12px; }
@@ -67,7 +69,6 @@
         .dashboard-header h2 { color: white; font-size: 26px; margin-bottom: 5px; }
         .dashboard-badge { display: inline-block; background: linear-gradient(135deg, #48bb78, #38a169); color: white; padding: 4px 12px; border-radius: 8px; font-size: 11px; font-weight: 700; margin-top: 10px; }
         .button-group { display: flex; flex-direction: column; gap: 10px; }
-        @media (max-width: 480px) { .card { padding: 30px 20px; } .title { font-size: 24px; } .btn { padding: 12px 16px; font-size: 13px; } .backup-codes { grid-template-columns: 1fr; } }
     </style>
 </head>
 <body>
@@ -101,11 +102,18 @@
                 <div id="loginMfaBlock" class="mfa-block">
                     <div class="mfa-icon">🔒</div>
                     <div class="mfa-title">Двухэтапная проверка</div>
-                    <div class="mfa-desc">Введите 6-значный код из приложения аутентификатора или резервный код</div>
-                    <div class="input-group">
-                        <input type="text" id="loginMfaCode" placeholder="Код или Бэкап-код" maxlength="8" style="text-align: center; letter-spacing: 3px; font-weight: bold; font-size: 16px;">
+                    <div class="mfa-desc" id="loginMfaDesc">Выберите способ подтверждения</div>
+                    
+                    <div id="mfaMethodSelection" style="display: none; flex-direction: column; gap: 10px; margin-top: 15px;">
                     </div>
-                    <button class="btn btn-secondary" id="btn-login-mfa" onclick="loginWithMfa()">Подтвердить вход</button>
+
+                    <div id="mfaCodeInputSection" style="display: none;">
+                        <div class="input-group" style="margin-top: 15px;">
+                            <input type="text" id="loginMfaCode" placeholder="Код" style="text-align: center; letter-spacing: 3px; font-weight: bold; font-size: 16px;">
+                        </div>
+                        <button class="btn btn-secondary" id="btn-login-mfa" onclick="loginWithMfa()">Подтвердить вход</button>
+                        <button class="btn" style="background: rgba(255,255,255,0.05); color: #cbd5e0; margin-top: 10px; border: 1px solid rgba(255,255,255,0.1);" onclick="resetMfaSelection()">🔙 Другой способ</button>
+                    </div>
                 </div>
 
                 <div id="message-auth" class="message-box"></div>
@@ -154,29 +162,51 @@
             </div>
 
             <div class="button-group">
-                <button class="btn btn-primary" onclick="getSecretData()">📊 Проверить доступ к API</button>
-                <button class="btn btn-warning" onclick="setupMFA()">⚙️ Настроить 2FA</button>
+                <button class="btn btn-primary" onclick="getSecretData()">📊 Аудит Сессии и Безопасности</button>
+                <button class="btn btn-warning" onclick="setupMFA()">⚙️ Настроить 2FA (Google Auth)</button>
+                <button class="btn btn-telegram" onclick="setupTelegram()">✈️ Привязать Telegram</button>
                 <button class="btn btn-danger" onclick="logout()">🚪 Выйти из системы</button>
             </div>
 
             <div id="mfaSetupBlock" class="mfa-block">
                 <div class="mfa-icon">🔐</div>
                 <div class="mfa-title">Привязка TOTP-устройства</div>
-                <div class="mfa-desc">Используйте приложение аутентификатора (Google Authenticator, Authy, Microsoft Authenticator)</div>
-
+                <div class="mfa-desc">Используйте приложение аутентификатора</div>
                 <img id="qrCodeImage" src="" alt="QR Code">
-
                 <div class="input-group">
                     <input type="text" id="mfaCode" placeholder="000000" maxlength="6" style="text-align: center; letter-spacing: 3px; font-weight: bold; font-size: 16px;">
                 </div>
                 <button class="btn btn-warning" id="btn-verify-mfa" onclick="verifyMFA()">Подтвердить привязку</button>
-
                 <div id="backupCodesBlock" class="backup-section">
-                    <div class="backup-warning">
-                        <span>⚠️</span>
-                        <span>Сохраните коды восстановления - они показываются только один раз!</span>
-                    </div>
+                    <div class="backup-warning"><span>⚠️</span><span>Сохраните коды восстановления - они показываются только один раз!</span></div>
                     <div class="backup-codes" id="backupCodesList"></div>
+                </div>
+            </div>
+
+            <div id="telegramSetupBlock" class="mfa-block">
+                <div class="mfa-icon">✈️</div>
+                <div class="mfa-title">Привязка Telegram</div>
+                <div class="mfa-desc">Нажмите на кнопку ниже, чтобы открыть бота в Telegram. Затем обязательно нажмите <b>"Запустить" (Start)</b>.</div>
+                <a id="telegramLink" href="#" target="_blank" class="btn btn-telegram" style="display:block; text-align:center; text-decoration:none; margin-top: 15px; margin-bottom: 10px;">Открыть Telegram бота</a>
+                <div class="subtitle" style="text-align:center; margin-top: 10px; color: #cbd5e0;">После запуска бота просто обновите эту страницу.</div>
+            </div>
+
+            <div id="securityXrayBlock" class="mfa-block" style="text-align: left; padding: 25px;">
+                <h3 style="color: white; margin-bottom: 20px; text-align: center; font-size: 18px;">📊 Отчет о Безопасности</h3>
+                
+                <div style="background: rgba(0,0,0,0.3); padding: 16px; border-radius: 12px; margin-bottom: 15px; border-left: 4px solid #667eea;">
+                    <h4 style="color: #a5b4fc; margin-bottom: 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">🔑 Stateless JWT-токен</h4>
+                    <p class="subtitle" style="margin-bottom: 6px; font-size: 13px;">Пользователь: <b id="xrayUser" style="color: white;">...</b></p>
+                    <p class="subtitle" style="font-size: 13px;">Токен сгорит через: <b id="xrayTimer" style="color: #f6e05e; font-size: 15px;">...</b></p>
+                </div>
+                
+                <div style="background: rgba(0,0,0,0.3); padding: 16px; border-radius: 12px; border-left: 4px solid #48bb78;">
+                    <h4 style="color: #9ae6b4; margin-bottom: 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">🛡️ Статус защиты</h4>
+                    <p class="subtitle" style="margin-bottom: 6px; font-size: 13px;">MFA защита: <span id="xray2FA" style="color: white; font-weight: bold;">...</span></p>
+                    <p class="subtitle" style="margin-bottom: 6px; font-size: 13px;">Активный метод: <span id="xrayMethod" style="color: white; font-weight: bold;">...</span></p>
+                    <p class="subtitle" style="margin-bottom: 6px; font-size: 13px;">Google Auth: <span id="xrayTotp" style="color: white; font-weight: bold;">...</span></p>
+                    <p class="subtitle" style="margin-bottom: 6px; font-size: 13px;">Telegram Bot: <span id="xrayTg" style="color: white; font-weight: bold;">...</span></p>
+                    <p class="subtitle" style="font-size: 13px;">Резервные коды: <span id="xrayCodes" style="color: white; font-weight: bold;">...</span></p>
                 </div>
             </div>
 
@@ -198,9 +228,7 @@
                     document.getElementById("auth-view").style.display = "block";
                     document.getElementById("dashboard-view").style.display = "none";
                 }
-            } catch(e) {
-                console.error("Ошибка проверки статуса");
-            }
+            } catch(e) {}
         }
 
         function switchTab(tabName) {
@@ -252,9 +280,7 @@
             el.innerText = msg;
             el.classList.add('active'); 
             
-            setTimeout(() => { 
-                el.classList.remove('active'); 
-            }, 6000); 
+            setTimeout(() => { el.classList.remove('active'); }, 6000); 
         }
 
         function setButtonLoading(buttonId, isLoading, defaultText) {
@@ -273,9 +299,7 @@
             const el = document.getElementById(ruleId);
             if(!el) return;
             const icon = el.querySelector('.check-icon');
-            if(!icon) return;
-            
-            if (isValid) {
+            if(isValid) {
                 el.classList.add("valid");
                 icon.innerText = "✓";
             } else {
@@ -289,8 +313,6 @@
             const confirmPwd = document.getElementById("reg-password-confirm").value;
             const rulesBox = document.getElementById("password-rules");
             
-            if(!rulesBox) return false;
-
             if (pwd.length > 0) rulesBox.classList.add("active");
             else rulesBox.classList.remove("active");
 
@@ -340,12 +362,12 @@
             }
         }
 
+        let currentMfaMethod = null; // Запоминаем, что выбрал пользователь
+
         async function login() {
             const u = document.getElementById("login-username").value.trim();
             const p = document.getElementById("login-password").value.trim();
-
             if (!u || !p) { showMsg("message-auth", "Введите логин и пароль.", "red"); return; }
-
             setButtonLoading("btn-login", true, "Войти в систему");
 
             const formData = new URLSearchParams();
@@ -353,23 +375,41 @@
             formData.append("password", p);
 
             try {
-                const response = await fetch("/login", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: formData
-                });
+                const response = await fetch("/login", { method: "POST", body: formData });
+                const data = await response.json();
 
                 if (response.ok) {
-                    const data = await response.json();
-                    if (data.mfa_required) {
+                    if (data.mfa_required && data.step === "select_method") {
                         document.getElementById("loginMfaBlock").classList.add("active");
-                        showMsg("message-auth", data.message, "info");
+                        document.getElementById("mfaMethodSelection").style.display = "flex";
+                        document.getElementById("mfaCodeInputSection").style.display = "none";
+                        document.getElementById("loginMfaDesc").innerText = data.message;
+                        
+                        const selectionBox = document.getElementById("mfaMethodSelection");
+                        selectionBox.innerHTML = ""; 
+                        
+                        data.available_methods.forEach(method => {
+                            const btn = document.createElement("button");
+                            btn.className = "btn";
+                            if (method.id === "telegram") {
+                                btn.classList.add("btn-telegram");
+                                btn.innerHTML = "✈️ " + method.name;
+                            } else if (method.id === "totp") {
+                                btn.classList.add("btn-warning");
+                                btn.innerHTML = "📱 " + method.name;
+                            } else {
+                                btn.style.background = "rgba(255,255,255,0.1)";
+                                btn.innerHTML = "🔑 " + method.name;
+                            }
+                            btn.onclick = () => selectMfaMethod(method.id);
+                            selectionBox.appendChild(btn);
+                        });
+                        showMsg("message-auth", "Необходима двухэтапная проверка", "info");
                     } else {
                         completeLogin();
                     }
                 } else {
-                    const error = await response.json();
-                    showMsg("message-auth", error.detail || "Ошибка", "red");
+                    showMsg("message-auth", data.detail || "Ошибка", "red");
                 }
             } catch (e) {
                 showMsg("message-auth", "Ошибка соединения", "red");
@@ -378,30 +418,65 @@
             }
         }
 
+        async function selectMfaMethod(methodId) {
+            currentMfaMethod = methodId;
+            
+            if (methodId === "telegram") {
+                const u = document.getElementById("login-username").value.trim();
+                const p = document.getElementById("login-password").value.trim();
+                
+                const formData = new URLSearchParams();
+                formData.append("username", u);
+                formData.append("password", p);
+                formData.append("mfa_method", methodId);
+                formData.append("request_code", "true"); 
+                
+                try {
+                    const response = await fetch("/login", { method: "POST", body: formData });
+                    const data = await response.json();
+                    
+                    if (response.ok && data.step === "enter_code") {
+                        showCodeInput(data.message + "<br><small>Действителен 1 минуту</small>");
+                        showMsg("message-auth", "Код отправлен", "green");
+                    } else {
+                        showMsg("message-auth", data.detail || "Ошибка отправки", "red");
+                    }
+                } catch(e) { showMsg("message-auth", "Ошибка сети", "red"); }
+            } else {
+                showCodeInput("Введите код из приложения или резервный код");
+            }
+        }
+
+        function showCodeInput(descText) {
+            document.getElementById("mfaMethodSelection").style.display = "none";
+            document.getElementById("mfaCodeInputSection").style.display = "block";
+            document.getElementById("loginMfaDesc").innerHTML = descText;
+            document.getElementById("loginMfaCode").value = "";
+            document.getElementById("loginMfaCode").focus();
+        }
+
+        function resetMfaSelection() {
+            currentMfaMethod = null;
+            document.getElementById("mfaCodeInputSection").style.display = "none";
+            document.getElementById("mfaMethodSelection").style.display = "flex";
+            document.getElementById("loginMfaDesc").innerText = "Выберите способ подтверждения";
+        }
+
         async function loginWithMfa() {
             const u = document.getElementById("login-username").value.trim();
             const p = document.getElementById("login-password").value.trim();
             const code = document.getElementById("loginMfaCode").value.trim();
-
-            if (!code || (code.length !== 6 && code.length !== 8)) { 
-                showMsg("message-auth", "Введите 6-значный код или 8-значный резервный код.", "red"); 
-                return; 
-            }
-
+            if (!code) { showMsg("message-auth", "Введите код.", "red"); return; }
             setButtonLoading("btn-login-mfa", true, "Подтвердить вход");
 
             const formData = new URLSearchParams();
             formData.append("username", u);
             formData.append("password", p);
             formData.append("mfa_code", code);
+            if (currentMfaMethod) formData.append("mfa_method", currentMfaMethod);
 
             try {
-                const response = await fetch("/login", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                    body: formData
-                });
-
+                const response = await fetch("/login", { method: "POST", body: formData });
                 if (response.ok) {
                     completeLogin();
                 } else {
@@ -426,18 +501,12 @@
             checkAuthStatus();
         }
 
-        async function getSecretData() {
-            const response = await fetch("/protected_data", { method: "GET" });
-            if (response.ok) {
-                const data = await response.json();
-                showMsg("message-dash", "Доступ разрешен: " + data.message, "green");
-            } else {
-                logout();
-                showMsg("message-auth", "Сессия истекла. Войдите заново.", "red");
-            }
-        }
-
+        // --- ФУНКЦИИ ЛИЧНОГО КАБИНЕТА ---
+        
         async function setupMFA() {
+            document.getElementById("telegramSetupBlock").classList.remove("active");
+            document.getElementById("securityXrayBlock").classList.remove("active");
+            
             const response = await fetch("/mfa/setup", { method: "GET" });
             if (response.ok) {
                 const data = await response.json();
@@ -446,7 +515,7 @@
                 document.getElementById("qrCodeImage").style.display = "block";
             } else {
                 const error = await response.json();
-                showMsg("message-dash", "Внимание: " + error.detail, "red");
+                showMsg("message-dash", error.detail, "red");
             }
         }
 
@@ -463,7 +532,6 @@
                 if (response.ok) {
                     const data = await response.json();
                     showMsg("message-dash", data.message, "green");
-                    
                     if (data.backup_codes) {
                         document.getElementById("backupCodesBlock").classList.add("active");
                         const ul = document.getElementById("backupCodesList");
@@ -474,12 +542,10 @@
                             div.innerText = code;
                             ul.appendChild(div);
                         });
-                        
                         document.getElementById("mfaCode").style.display = "none";
                         document.getElementById("btn-verify-mfa").style.display = "none";
                         document.getElementById("qrCodeImage").style.display = "none";
                         document.querySelector("#mfaSetupBlock .mfa-title").innerText = "Настройка завершена";
-                        document.querySelector("#mfaSetupBlock .mfa-desc").style.display = "none";
                     }
                 } else {
                     const error = await response.json();
@@ -489,6 +555,98 @@
                 showMsg("message-dash", "Ошибка сети", "red");
             } finally {
                 setButtonLoading("btn-verify-mfa", false, "Подтвердить привязку");
+            }
+        }
+
+        async function setupTelegram() {
+            const btn = document.querySelector('.btn-telegram');
+            if(btn) { btn.disabled = true; btn.innerText = "⏳ Генерация..."; }
+
+            document.getElementById("mfaSetupBlock").classList.remove("active");
+            document.getElementById("securityXrayBlock").classList.remove("active");
+
+            try {
+                const response = await fetch("/api/mfa/telegram/generate-link", { method: "POST" });
+                const data = await response.json();
+
+                if (response.ok) {
+                    window.open(data.telegram_url, '_blank');
+                    const tgBlock = document.getElementById("telegramSetupBlock");
+                    if (tgBlock) tgBlock.classList.add("active");
+                    const tgLink = document.getElementById("telegramLink");
+                    if (tgLink) tgLink.href = data.telegram_url;
+                    showMsg("message-dash", "Откройте Telegram и нажмите Start", "green");
+                } else {
+                    showMsg("message-dash", data.detail || "Ошибка генерации", "red");
+                }
+            } catch (e) {
+                showMsg("message-dash", "Ошибка сети", "red");
+            } finally {
+                if(btn) { btn.disabled = false; btn.innerText = "✈️ Привязать Telegram"; }
+            }
+        }
+
+        let sessionTimer; 
+        async function getSecretData() {
+            document.getElementById("mfaSetupBlock").classList.remove("active");
+            document.getElementById("telegramSetupBlock").classList.remove("active");
+
+            try {
+                const response = await fetch("/protected_data", { method: "GET" });
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById("securityXrayBlock").classList.add("active");
+                    
+                    // Заполняем JWT
+                    document.getElementById("xrayUser").innerText = data.jwt_payload.sub;
+                    
+                    // Заполняем статусы
+                    document.getElementById("xray2FA").innerText = data.security.is_mfa_enabled ? "✅ Включена" : "❌ Отключена";
+                    document.getElementById("xrayMethod").innerText = data.security.mfa_method;
+                    
+                    // НОВЫЕ СТРОКИ: Четко разделяем статусы
+                    document.getElementById("xrayTotp").innerText = data.security.totp_linked ? "✅ Привязан" : "❌ Не привязан";
+                    document.getElementById("xrayTg").innerText = data.security.telegram_linked ? "✅ Привязан" : "❌ Не привязан";
+                    
+                    // Умная логика резервных кодов:
+                    // Показываем их ТОЛЬКО если привязан Google Auth. 
+                    // Если только Telegram - пишем, что они не нужны.
+                    if (data.security.totp_linked) {
+                        document.getElementById("xrayCodes").innerText = data.security.backup_codes + " шт. осталось";
+                    } else if (data.security.telegram_linked) {
+                        document.getElementById("xrayCodes").innerText = "Не используются (Онлайн-коды)";
+                    } else {
+                        document.getElementById("xrayCodes").innerText = "Отсутствуют";
+                    }
+
+                    // --- Логика таймера ---
+                    clearInterval(sessionTimer); 
+                    const expTimeMs = data.jwt_payload.exp * 1000; 
+                    
+                    const updateTimer = () => {
+                        const distance = expTimeMs - new Date().getTime();
+                        const timerEl = document.getElementById("xrayTimer");
+                        if (distance < 0) {
+                            clearInterval(sessionTimer);
+                            timerEl.innerText = "Сессия истекла";
+                            timerEl.style.color = "#fc8181"; 
+                            return;
+                        }
+                        const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                        const s = Math.floor((distance % (1000 * 60)) / 1000);
+                        timerEl.innerText = `${m} мин. ${s} сек.`;
+                        timerEl.style.color = (m < 5) ? "#fc8181" : "#f6e05e";
+                    };
+                    
+                    updateTimer(); 
+                    sessionTimer = setInterval(updateTimer, 1000); 
+                    showMsg("message-dash", "Аудит безопасности успешно проведен!", "green");
+                } else {
+                    logout();
+                    showMsg("message-auth", "Сессия истекла", "red");
+                }
+            } catch (e) {
+                showMsg("message-dash", "Ошибка при получении данных", "red");
             }
         }
     </script>
